@@ -19,7 +19,7 @@ public class BfhlController {
     @Value("${official.email}")
     private String email;
 
-    @PostMapping("/check")
+    @PostMapping("/bfhl")
     public ResponseEntity<ApiResponse> process(@Valid @RequestBody BfhlRequest request){
         Object result = service.process(request);
         return ResponseEntity.ok(new ApiResponse(true, email, result));

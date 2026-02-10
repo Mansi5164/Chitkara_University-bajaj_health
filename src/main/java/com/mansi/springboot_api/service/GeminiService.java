@@ -1,104 +1,64 @@
 package com.mansi.springboot_api.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-
-import java.util.List;
-import java.util.Map;
-
+import org.springframework.web.client.RestTemplate;
 
 @Service
 public class GeminiService {
 
-    private final WebClient webClient;
-    private final String apiKey;
+    @Value("${gemini.api.key}")
+    private String apiKey;
 
-    // Spring will inject the builder and the value here
-    public GeminiService(WebClient.Builder webClientBuilder, @Value("${gemini.api.key}") String apiKey) {
-        this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
-        this.apiKey = apiKey;
-    }
+    private final RestTemplate restTemplate = new RestTemplate();
 
     public String askAI(String question) {
-        // Use the model you want; gemini-1.5-flash is great for speed
-        String endpoint =
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey;
 
+        // same as axios endpoint
+        String url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey;
 
-        // Your payload structure is correct for the Gemini API
-        Map<String, Object> requestBody = Map.of(
-                "contents", new Object[]{
-                        Map.of("parts", new Object[]{
-                                Map.of("text", question)
-                        })
-                }
-        );
+        // EXACT prompt like NodeJS
+        String prompt = "Answer the following question with ONLY the direct answer. "
+                + "Do NOT include any extra text or explanation. Question: " + question;
+
+        String body = """
+        {
+          "contents": [
+            {
+              "parts": [
+                { "text": "%s" }
+              ]
+            }
+          ]
+        }
+        """.formatted(prompt.replace("\"",""));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> request = new HttpEntity<>(body, headers);
 
         try {
-            return webClient.post()
-                    .uri(endpoint)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(Map.class)
-                    .map(this::extractTextFromResponse)
-                    .block(); // .block() is fine for non-reactive Spring Boot (Servlet)
-        } catch (Exception e) {
-            return "Error: " + e.getMessage();
-        }
-    }
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    request,
+                    String.class
+            );
 
-    private String extractTextFromResponse(Map response) {
-        try {
-            List candidates = (List) response.get("candidates");
-            Map firstCandidate = (Map) candidates.get(0);
-            Map content = (Map) firstCandidate.get("content");
-            List parts = (List) content.get("parts");
-            Map firstPart = (Map) parts.get(0);
+            String json = response.getBody();
 
-            String rawText = firstPart.get("text").toString();
+            // Extract Gemini text response
+            int index = json.indexOf("\"text\":");
+            int start = json.indexOf("\"", index + 7) + 1;
+            int end = json.indexOf("\"", start);
 
-            return cleanAnswer(rawText);
+            return json.substring(start, end).trim();
 
         } catch (Exception e) {
-            return "Could not parse AI response.";
+            e.printStackTrace();
+            return "unavailable";
         }
     }
-
-    private String cleanAnswer(String text) {
-
-        if (text == null) return "";
-
-        // remove markdown bold **Mumbai**
-        text = text.replaceAll("\\*\\*", "");
-
-        // remove new lines
-        text = text.replace("\n", " ").trim();
-
-        // If sentence contains "is", keep last part
-        // Example: "The capital of Maharashtra is Mumbai."
-        if (text.toLowerCase().contains(" is ")) {
-            String[] parts = text.split(" is ");
-            text = parts[parts.length - 1];
-        }
-
-        text = text.replaceAll("^[Tt]he ", "");
-
-        text = text.replaceAll("[.!,]", "");
-
-        text = text.trim();
-        if (text.contains("(")) {
-            text = text.substring(0, text.indexOf("(")).trim();
-        }
-
-        if (text.contains(" ")) {
-            text = text.split(" ")[0];
-        }
-
-        return text;
-    }
-
-
 }
