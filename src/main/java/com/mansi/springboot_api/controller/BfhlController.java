@@ -24,4 +24,6 @@ public class BfhlController {
         Object result = service.process(request);
         return ResponseEntity.ok(new ApiResponse(true, email, result));
     }
+
+
 }
